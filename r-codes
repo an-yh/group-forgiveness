@@ -1,0 +1,631 @@
+---
+title: "R Notebook"
+output: pdf_document
+---
+
+# Upload Data/Cleaning
+```{r}
+library(readr)
+library(lavaan)
+library(effects)
+library(psych)
+library(dummies)
+ds <- read_csv("~/Research Study/Tsang Studies/Group Forgiveness and Religion/ds for analysis.csv")
+
+# Cleaning (Start with n = 443)
+  ## Attention checks
+  ds <- ds[ds$attn1 == 2 | is.na(ds$attn1),] #n = 420 (remove 23)
+  
+  ## Manipulation checks
+  filter1 <- ds$group == 2 & ds$forg_other == 1
+  ds <- ds[!filter1,]                         #n = 415 (remove 5)
+  filter7 <- ds$group == 1 & ds$forg_other == 7
+  ds <- ds[!filter7,]                         #n = 414 (remove 1)
+  
+  forgiving1 <- ds$group == 2 & ds$forgiving == 1
+  ds <- ds[!forgiving1,]                      #n = 410 (remove 4)
+  forgiving2 <- ds$group == 1 & ds$forgiving == 7
+  ds <- ds[!forgiving2,]                      #n = 409 (remove 1)
+  
+  ## Suspicion
+  ds <- ds[ds$susp.code1 == 0 | is.na(ds$susp.code1),]
+  ds <- ds[ds$susp.code2 == 0 | is.na(ds$susp.code2),]
+```
+
+# Convenience variables
+```{r}
+#ds$group <- factor(ds$group, levels = c(0, 1, 2), labels = c("Control", "No Forgive", "Forgive"))
+#ds$group <- relevel(ds$group, ref = "No Forgive")
+
+qItems <- paste0("Q_", 1:12)
+inItems <- paste0("IE_", c(2,4,7,8,10,13,14,15,18,19))
+exItems <- paste0("IE_", c(1,3,5,6,9,11,12,16,17,20))
+
+orthItems <- paste0("CO_", 1:12)
+
+cohesionItems <- paste0("soc_solidar", 9:12)
+likingItems <- paste0("soc_solidar", 5:8)
+trustItems <- c(paste0("soc_solidar", 1:4), "trust_group", "trustworthy")
+
+sidItems <- paste0("socid", 1:9)
+
+slackerItems <- c("Q117", "Q119", "Q120", "Q121")
+
+sdoItems <- paste0("SDO_", 1:14)
+  sdoItemsR <- paste0("SDO_", 8:14)
+  ds[,sdoItemsR] <- 8-ds[,sdoItemsR]
+
+svoItems <- paste0("SVO", 1:9)
+  # Re-code SVO items
+  ds$SVO1[ds$SVO1 == 1] <- 0
+  ds$SVO1[ds$SVO1 == 2] <- 1
+  ds$SVO1[ds$SVO1 == 3] <- 2
+  
+  ds$SVO2[ds$SVO2 == 1] <- 1
+  ds$SVO2[ds$SVO2 == 2] <- 2
+  ds$SVO2[ds$SVO2 == 3] <- 0
+  
+  ds$SVO3[ds$SVO3 == 1] <- 2
+  ds$SVO3[ds$SVO3 == 2] <- 0
+  ds$SVO3[ds$SVO3 == 3] <- 1
+  
+  ds$SVO4[ds$SVO4 == 1] <- 0
+  ds$SVO4[ds$SVO4 == 2] <- 1
+  ds$SVO4[ds$SVO4 == 3] <- 2
+  
+  ds$SVO5[ds$SVO5 == 1] <- 1
+  ds$SVO5[ds$SVO5 == 2] <- 2
+  ds$SVO5[ds$SVO5 == 3] <- 0
+  
+  ds$SVO6[ds$SVO6 == 1] <- 2
+  ds$SVO6[ds$SVO6 == 2] <- 0
+  ds$SVO6[ds$SVO6 == 3] <- 1
+  
+  ds$SVO7[ds$SVO7 == 1] <- 2
+  ds$SVO7[ds$SVO7 == 2] <- 1
+  ds$SVO7[ds$SVO7 == 3] <- 0
+  
+  ds$SVO8[ds$SVO8 == 1] <- 1
+  ds$SVO8[ds$SVO8 == 2] <- 0
+  ds$SVO8[ds$SVO8 == 3] <- 2
+  
+  ds$SVO9[ds$SVO9 == 1] <- 0
+  ds$SVO9[ds$SVO9 == 2] <- 2
+  ds$SVO9[ds$SVO9 == 3] <- 1
+  
+  # Create categorical variable
+  ds$svo.zero <- rowSums(ds[svoItems]==0)
+  ds$svo.one <- rowSums(ds[svoItems]==1)
+  ds$svo.two <- rowSums(ds[svoItems]==2)
+  
+  # Classify them as based on whether they answer consistently to one category (x >= 6)
+  ds$Competitor <- ifelse(ds$svo.zero >= 6, "Competitor", NA)
+  ds$Individualist <- ifelse(ds$svo.one >= 6, "Individualist", NA)
+  ds$Prosocial <- ifelse(ds$svo.two >= 6, "Prosocial", NA)
+  
+  ds$svo.category <- NA
+    ds$svo.category[ds$Competitor == "Competitor"] <- "Competitor"
+    ds$svo.category[ds$Individualist == "Individualist"] <- "Individualist"
+    ds$svo.category[ds$Prosocial == "Prosocial"] <- "Prosocial"
+  
+  # Categorize them as such that Competitor/Individualist=0; Prosocial=1
+  ds$svo.group <- NA
+    ds$svo.group[ds$Competitor == "Competitor"] <- 0
+    ds$svo.group[ds$Individualist == "Individualist"] <- 0
+    ds$svo.group[ds$Prosocial == "Prosocial"] <- 1
+```
+
+# Scale
+```{r}
+ds[,qItems] <- scale(ds[qItems])
+ds[,inItems] <- scale(ds[,inItems])
+ds[,exItems] <- scale(ds[,exItems])
+
+ds[,orthItems] <- scale(ds[,orthItems])
+
+ds[,cohesionItems] <- scale(ds[,cohesionItems])
+ds[,likingItems] <- scale(ds[,likingItems])
+ds[,trustItems] <- scale(ds[,trustItems])
+ds$work_other <- scale(ds$work_other)
+ds$work_you <- scale(ds$work_you)
+
+ds[,sdoItems] <- scale(ds[,sdoItems])
+
+ds$caring <- scale(ds$caring)
+ds$fair <- scale(ds$fair)
+ds$loyal <- scale(ds$loyal)
+ds$respect <- scale(ds$respect)
+ds$wholesome <- scale(ds$wholesome)
+
+ds$freedom <- scale(ds$freedom)
+ds$cohesive <- scale(ds$cohesive)
+
+ds$reloverlap <- scale(ds$reloverlap)
+ds$prayfreq <- scale(ds$prayfreq)
+ds$attendfreq <- scale(ds$attendfreq)
+ds$relinter <- scale(ds$relinter)
+```
+
+# Means
+```{r}
+ds$qMeans <- rowMeans(ds[qItems], na.rm = T)
+ds$inMeans <- rowMeans(ds[,inItems],na.rm = TRUE)
+ds$exMeans <- rowMeans(ds[,exItems],na.rm = TRUE)
+
+ds$orthMeans <- rowMeans(ds[,orthItems], na.rm=T)
+
+ds$cohesionMeans <- rowMeans(ds[,cohesionItems], na.rm=T)
+ds$likingMeans <- rowMeans(ds[,likingItems], na.rm=T)
+ds$trustMeans <- rowMeans(ds[,trustItems], na.rm=T)
+
+ds$sdoMeans <- rowMeans(ds[,sdoItems], na.rm=T)
+```
+
+# Notes
+## Grouping variable: 0 = Control; 1 = No Forgive; 2 = Forgive
+```{r}
+## Factor grouping variable
+ds$group.f <- factor(ds$group)
+## Coding the grouping variable
+ds <- cbind(ds, dummy(ds$group.f))    #Do this first, then next line. IDK why it works this way.
+ds <- cbind(ds, dummy("group.f", ds)) #Column 2 is No forgive-Control; Column 3 is Forgive-Control
+```
+
+# Primary Objective
+## Creating smaller dataset
+```{r}
+ds.p <- ds[, c(cohesionItems, likingItems, trustItems, sidItems, "work_other", "work_you", "group.f0", "group.f1", "group.f2")]   #n=409
+
+# Listwise Deletion
+ds.p <- ds.p[complete.cases(ds.p),] #n = 408 (removed 1)
+
+# Rename condition variables
+library(data.table)
+setnames(ds.p, old = c("group.f0", "group.f1", "group.f2"), new = c("Control", "No.Forgive", "Forgive"))
+```
+
+## Group vs. Control
+```{r}
+# Predicting Group/Self Cooperation as DV
+mod.p <- '
+
+g.coop =~ work_other
+s.coop =~ work_you
+
+trust =~ soc_solidar1 + soc_solidar2 + soc_solidar3 + soc_solidar4 + trust_group + trustworthy
+liking =~ soc_solidar5 + soc_solidar6 + soc_solidar7 + soc_solidar8
+unity =~ soc_solidar9 + soc_solidar10 + soc_solidar11 + soc_solidar12
+sid =~ socid1 + socid2 + socid3 + socid4 + socid5 + socid6 + socid7 + socid8 + socid9
+
+g.coop ~ a*No.Forgive + b*Forgive + c*trust + d*liking + e*unity + f*sid
+s.coop ~ g*No.Forgive + h*Forgive + i*trust + j*liking + k*unity + l*sid
+
+trust ~ m*No.Forgive + n*Forgive
+liking ~ o*No.Forgive + p*Forgive
+unity ~ q*No.Forgive + r*Forgive
+sid ~ s*No.Forgive + t*Forgive
+
+no.trust.g := m*c
+for.trust.g := n*c
+
+no.liking.g := o*d
+for.liking.g := p*d
+
+no.unity.g := q*e
+for.unity.g := r*e
+
+no.sid.g := s*f
+for.sid.g := t*f
+
+no.trust.s := m*i
+for.trust.s := n*i
+
+no.liking.s := o*j
+for.liking.s := p*j
+
+no.unity.s := q*k
+for.unity.s := r*k
+
+no.sid.s := s*l
+for.sid.s := t*l
+'
+fit.p <- sem(model = mod.p, data = ds.p, meanstructure = T, mimic = "Mplus")
+summary(fit.p, standardized = T, fit.measures = T)
+```
+## Group vs. No Forgiveness
+```{r}
+mod.p <- '
+cohesion =~ soc_solidar9 + soc_solidar10 + soc_solidar11 + soc_solidar12
+liking =~ soc_solidar5 + soc_solidar6 + soc_solidar7 + soc_solidar8 
+trust =~ soc_solidar1 + soc_solidar2 + soc_solidar3 + soc_solidar4
+g.coop =~ work_other
+s.coop =~ work_you
+#slack =~ Q117 + Q119 + Q120 + Q121
+
+cohesion ~ a*Control + b*Forgive + c*g.coop + d*liking + e*trust
+g.coop ~ f*Control + g*Forgive
+liking ~ h*Control + i*Forgive
+trust ~ j*Control + k*Forgive
+
+no.gcoop.med := f*c
+for.gcoop.med := g*c
+
+no.like.med := h*d
+for.like.med := i*d
+
+no.trust.med := j*e
+for.trust.med := k*e
+'
+fit.p <- sem(model = mod.p, data = ds.p, meanstructure = T, mimic = "Mplus")
+summary(fit.p, standardized = T, fit.measures = T)
+
+# Predicting Group/Self Cooperation as DV
+mod.p <- '
+
+g.coop =~ work_other
+s.coop =~ work_you
+
+trust =~ soc_solidar1 + soc_solidar2 + soc_solidar3 + soc_solidar4 + trust_group + trustworthy
+liking =~ soc_solidar5 + soc_solidar6 + soc_solidar7 + soc_solidar8
+unity =~ soc_solidar9 + soc_solidar10 + soc_solidar11 + soc_solidar12
+sid =~ socid1 + socid2 + socid3 + socid4 + socid5 + socid6 + socid7 + socid8 + socid9
+
+g.coop ~ a*Control + b*Forgive + c*trust + d*liking + e*unity + f*sid
+s.coop ~ g*Control + h*Forgive + i*trust + j*liking + k*unity + l*sid
+
+trust ~ m*Control + n*Forgive
+liking ~ o*Control + p*Forgive
+unity ~ q*Control + r*Forgive
+sid ~ s*Control + t*Forgive
+
+no.trust.g := m*c
+for.trust.g := n*c
+
+no.liking.g := o*d
+for.liking.g := p*d
+
+no.unity.g := q*e
+for.unity.g := r*e
+
+no.sid.g := s*f
+for.sid.g := t*f
+
+no.trust.s := m*i
+for.trust.s := n*i
+
+no.liking.s := o*j
+for.liking.s := p*j
+
+no.unity.s := q*k
+for.unity.s := r*k
+
+no.sid.s := s*l
+for.sid.s := t*l
+'
+fit.p <- sem(model = mod.p, data = ds.p, meanstructure = T, mimic = "Mplus")
+summary(fit.p, standardized = T, fit.measures = T)
+```
+
+# Secondary Objective
+## Correlations between Religiosity and MF
+```{r}
+ds.cor <- ds[, c("caring", "fair", "loyal", "respect", "wholesome", "freedom", "reloverlap", "prayfreq", "attendfreq", "relinter")]
+ds.cor <- ds.cor[complete.cases(ds.cor),]
+
+# Means
+corr.test(ds.cor)
+
+# SEM
+cor.mod <- '
+care =~ caring
+fairness =~ fair
+ingroup =~ loyal
+authority =~ respect
+purity =~ wholesome
+liberty =~ freedom
+
+id.fus =~ reloverlap
+prayer =~ prayfreq
+attend =~ attendfreq
+interest =~ relinter
+'
+cor.fit <- sem(cor.mod, ds.cor, meanstructure = TRUE, mimic = "Mplus")
+summary(cor.fit, fit.measures = TRUE, standardized = TRUE)
+```
+
+## Moderation Models: Conditions -> Group Cohesion
+### Moderator: Religious Orientation
+```{r}
+ds.ro <- as.matrix(ds[, c("cohesionMeans", "qMeans", "inMeans", "exMeans", "group")])   #n=409
+
+# Listwise Deletion
+ds.ro <- ds.ro[complete.cases(ds.ro),] #n = 409 (removed 0)
+ds.ro <- as.data.frame(ds.ro, stringsAsFactors = FALSE)
+
+# Factor "Group" variable
+ds.ro$group <- factor(ds.ro$group, levels = c("Control", "No Forgive", "Forgive"), labels = c("Control", "No Forgive", "Forgive"))
+  ## Change reference group to "No Forgiveness"
+  ds.ro$group <- relevel(ds.ro$group, ref = "No Forgive")
+
+# Coerce character to numeric
+ds.ro[1:4] <- lapply(ds.ro[1:4], as.numeric)
+
+# Regression Model
+## Quest
+q.mod <- lm(cohesionMeans ~ group + qMeans + group:qMeans, ds.ro)
+summary(q.mod)
+  plot(allEffects(q.mod), main = "Condition/Quest Interaction Plot", xlab = "Quest Means", ylab = "Group Cohesion Means")
+
+## Intrinsic
+intr.mod <- lm(cohesionMeans ~ group + inMeans + group:inMeans, ds.ro)
+summary(intr.mod)
+  plot(allEffects(intr.mod), main = "Condition/Intrinsic Interaction Plot", xlab = "Intrinsic Means", ylab = "Group Cohesion Means")
+
+## Extrinsic
+extr.mod <- lm(cohesionMeans ~ group + exMeans + group:exMeans, ds.ro)
+summary(extr.mod)
+  plot(allEffects(extr.mod), main = "Condition/Extrinsic Interaction Plot", xlab = "Extrinsic Means", ylab = "Group Cohesion Means")
+
+## Religious Orientation
+ro.mod <- lm(cohesionMeans ~ group + qMeans + group:qMeans + inMeans + group:inMeans + exMeans + group:exMeans, ds.ro)
+summary(ro.mod)
+
+library(effects)
+plot(allEffects(ro.mod))
+```
+### Moderator: Christian Orthodoxy
+```{r}
+ds.co <- as.matrix(ds[, c("cohesionMeans", "orthMeans", "group")])   #n=409
+
+# Listwise Deletion
+ds.co <- ds.co[complete.cases(ds.co),] #n = 408 (removed 1)
+ds.co <- as.data.frame(ds.co, stringsAsFactors = FALSE)
+
+# Factor "Group" variable
+ds.co$group <- factor(ds.co$group, levels = c("Control", "No Forgive", "Forgive"), labels = c("Control", "No Forgive", "Forgive"))
+  ## Change reference group to "No Forgiveness"
+  ds.co$group <- relevel(ds.co$group, ref = "No Forgive")
+
+# Coerce character to numeric
+ds.co[1:2] <- lapply(ds.co[1:2], as.numeric)
+
+# Regression
+co.mod <- lm(cohesionMeans ~ group + orthMeans + group:orthMeans, ds.co)
+summary(co.mod)
+  plot(allEffects(co.mod), main = "Condition/Orthodoxy Interaction Plot", xlab = "Orthodoxy Means", ylab = "Group Cohesion Means")
+```
+### Moderator: SDO
+```{r}
+ds.sdo <- as.matrix(ds[, c("cohesionMeans", "sdoMeans", "group")])   #n=409
+
+# Listwise Deletion
+ds.sdo <- ds.sdo[complete.cases(ds.sdo),] #n = 409 (removed 0)
+ds.sdo <- as.data.frame(ds.sdo, stringsAsFactors = FALSE)
+
+# Factor "Group" variable
+ds.sdo$group <- factor(ds.sdo$group, levels = c("Control", "No Forgive", "Forgive"), labels = c("Control", "No Forgive", "Forgive"))
+  ## Change reference group to "No Forgiveness"
+  ds.sdo$group <- relevel(ds.sdo$group, ref = "No Forgive")
+
+# Coerce character to numeric
+ds.sdo[1:2] <- lapply(ds.sdo[1:2], as.numeric)
+
+# Regression
+sdo.mod <- lm(cohesionMeans ~ group + sdoMeans + group:sdoMeans, ds.sdo)
+summary(sdo.mod)
+  plot(allEffects(sdo.mod), main = "Condition/SDO Interaction Plot", xlab = "SDO Means", ylab = "Group Cohesion Means")
+```
+### Moderator: SVO
+#### Competitor vs. Individualist vs. Prosocial
+```{r}
+ds.cat <- as.matrix(ds[, c("cohesionMeans", "svo.category", "group")])   #n=409
+
+# Listwise Deletion
+ds.cat <- ds.cat[complete.cases(ds.cat),] #n = 321 (removed 88)
+ds.cat <- as.data.frame(ds.cat, stringsAsFactors = FALSE)
+
+# Factor "Group" variable
+ds.cat$group <- factor(ds.cat$group, levels = c("Control", "No Forgive", "Forgive"), labels = c("Control", "No Forgive", "Forgive"))
+  ## Change reference group to "No Forgiveness"
+  ds.cat$group <- relevel(ds.cat$group, ref = "Control")
+  
+# Factor "SVO.Category"
+ds.cat$svo.category <- factor(ds.cat$svo.category, levels = c("Competitor", "Individualist", "Prosocial"), labels = c("Competitor", "Individualist", "Prosocial"))
+  ## Change reference group to "Individualist"
+  ds.cat$svo.category <- relevel(ds.cat$svo.category, ref = "Competitor")
+
+# Coerce character to numeric
+ds.cat[1] <- lapply(ds.cat[1], as.numeric)
+
+# Regression
+svo.mod <- lm(cohesionMeans ~ group + svo.category + group:svo.category, ds.cat)
+summary(svo.mod)
+
+plot(allEffects(svo.mod), main = "Condition/SVO Interaction Plot", xlab = "Condition", ylab = "Group Cohesion Means")
+```
+#### Egoist vs. Prosocial
+```{r}
+ds.grp <- as.matrix(ds[, c("cohesionMeans", "svo.group", "group")])   #n=409
+
+# Listwise Deletion
+ds.grp <- ds.grp[complete.cases(ds.grp),] #n = 321 (removed 88)
+ds.grp <- as.data.frame(ds.grp, stringsAsFactors = FALSE)
+
+# Factor "Group" variable
+ds.grp$group <- factor(ds.grp$group, levels = c("Control", "No Forgive", "Forgive"), labels = c("Control", "No Forgive", "Forgive"))
+  ## Change reference group to "No Forgiveness"
+  ds.grp$group <- relevel(ds.grp$group, ref = "No Forgive")
+
+# Factor "SVO.Group"
+ds.grp$svo.group <- ifelse(ds.grp$svo.group == " 0", 0,1)
+ds.grp$svo.group <- factor(ds.grp$svo.group, levels = c(0, 1), labels = c("Egoist", "Prosocial"))
+
+# Coerce character to numeric
+ds.grp[1] <- lapply(ds.grp[1], as.numeric)
+
+# Regression
+svo.mod <- lm(cohesionMeans ~ group + svo.group + group:svo.group, ds.grp)
+summary(svo.mod)
+```
+## MF Models: Conditions -> Group-level Moral Foundations
+### Creating smaller dataset
+```{r}
+ds.mf <- as.matrix(ds[, c("group.f0", "group.f1", "group.f2", "caring", "fair", "loyal", "respect", "wholesome", "freedom")])
+
+# Remove missing cases
+ds.mf <- ds.mf[complete.cases(ds.mf),]  # n=409 (removed 0)
+ds.mf <- as.data.frame(ds.mf)
+
+# Rename condition variables
+library(data.table)
+setnames(ds.mf, old = c("group.f0", "group.f1", "group.f2"), new = c("Control", "No.Forgive", "Forgive"))
+```
+### Lavaan Model
+```{r}
+mf.mod <- '
+care =~ caring
+fairness =~ fair
+ingroup =~ loyal
+authority =~ respect
+purity =~ wholesome
+liberty =~ freedom
+
+care ~ Control + Forgive
+fairness ~ Control + Forgive
+ingroup ~ Control + Forgive
+authority ~ Control + Forgive
+purity ~ Control + Forgive
+liberty ~ Control + Forgive
+'
+mf.fit <- sem(mf.mod, ds.mf, meanstructure = TRUE, mimic = "Mplus")
+summary(mf.fit, standardized = TRUE, fit.measures = TRUE)
+
+library(semPlot)
+semPaths(mf.fit)
+```
+## Mediation Models: Conditions -> Group Cooperation
+### Mediator: Group Cohesion
+#### Creating smaller dataset
+```{r}
+ds.gc <- as.matrix(ds[, c(cohesionItems, "work_other", "group.f0", "group.f1", "group.f2")])   #n=409
+
+# Listwise Deletion
+ds.gc <- ds.gc[complete.cases(ds.gc),] #n = 388 (removed 21)
+ds.gc <- as.data.frame(ds.gc)
+
+# Rename condition variables
+library(data.table)
+setnames(ds.gc, old = c("group.f0", "group.f1", "group.f2"), new = c("Control", "No.Forgive", "Forgive"))
+```
+#### Control = Reference Group
+```{r}
+med.mod <- '
+g.coop =~ work_other
+
+cohesion =~ soc_solidar9 + soc_solidar10 + soc_solidar11 + soc_solidar12
+g.coop ~ a*No.Forgive + b*Forgive + c*cohesion
+cohesion ~ d*No.Forgive + e*Forgive
+  no.gc.med := c*d
+  for.gc.med := c*e
+'
+med.fit <- sem(med.mod, ds.gc, meanstructure = T, mimic = "Mplus")
+summary(med.fit, standardized = TRUE, fit.measures = TRUE)
+```
+#### No Forgiveness = Reference Group
+```{r}
+med.mod <- '
+g.coop =~ work_other
+
+cohesion =~ soc_solidar9 + soc_solidar10 + soc_solidar11 + soc_solidar12
+g.coop ~ a*Control + b*Forgive + c*cohesion
+cohesion ~ d*Control + e*Forgive
+  con.gc.med := c*d
+  for.gc.med := c*e
+'
+med.fit <- sem(med.mod, ds.gc, meanstructure = T, mimic = "Mplus")
+summary(med.fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+### Mediator: Liking
+#### Creating smaller dataset
+```{r}
+ds.like <- as.matrix(ds[, c(likingItems, "work_other", "group.f0", "group.f1", "group.f2")])   #n=409
+
+# Listwise Deletion
+ds.like <- ds.like[complete.cases(ds.like),] #n = 388 (removed 21)
+ds.like <- as.data.frame(ds.like)
+
+# Rename condition variables
+library(data.table)
+setnames(ds.like, old = c("group.f0", "group.f1", "group.f2"), new = c("Control", "No.Forgive", "Forgive"))
+```
+#### Control = Reference Group
+```{r}
+med.mod <- '
+g.coop =~ work_other
+
+liking =~ soc_solidar5 + soc_solidar6 + soc_solidar7 + soc_solidar8
+g.coop ~ a*No.Forgive + b*Forgive + c*liking
+liking ~ d*No.Forgive + e*Forgive
+  no.like.med := c*d
+  for.like.med := c*e
+'
+med.fit <- sem(med.mod, ds.like, meanstructure = T, mimic = "Mplus")
+summary(med.fit, standardized = TRUE, fit.measures = TRUE)
+```
+#### No Forgiveness = Reference Group
+```{r}
+med.mod <- '
+g.coop =~ work_other
+
+liking =~ soc_solidar5 + soc_solidar6 + soc_solidar7 + soc_solidar8
+g.coop ~ a*Control + b*Forgive + c*liking
+liking ~ d*Control + e*Forgive
+  con.like.med := c*d
+  for.like.med := c*e
+'
+med.fit <- sem(med.mod, ds.like, meanstructure = T, mimic = "Mplus")
+summary(med.fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+### Mediator: Trust
+#### Creating smaller dataset
+```{r}
+ds.trust <- as.matrix(ds[, c(trustItems, "work_other", "group.f0", "group.f1", "group.f2")])   #n=409
+
+# Listwise Deletion
+ds.trust <- ds.trust[complete.cases(ds.trust),] #n = 388 (removed 21)
+ds.trust <- as.data.frame(ds.trust)
+
+# Rename condition variables
+library(data.table)
+setnames(ds.trust, old = c("group.f0", "group.f1", "group.f2"), new = c("Control", "No.Forgive", "Forgive"))
+```
+#### Control = Reference Group
+```{r}
+med.mod <- '
+g.coop =~ work_other
+
+trust =~ soc_solidar1 + soc_solidar2 + soc_solidar3 + soc_solidar4
+g.coop ~ a*No.Forgive + b*Forgive + c*trust
+trust ~ d*No.Forgive + e*Forgive
+  no.trust.med := c*d
+  for.trust.med := c*e
+'
+med.fit <- sem(med.mod, ds.trust, meanstructure = T, mimic = "Mplus")
+summary(med.fit, standardized = TRUE, fit.measures = TRUE)
+```
+#### No Forgiveness = Reference Group
+```{r}
+med.mod <- '
+g.coop =~ work_other
+
+trust =~ soc_solidar1 + soc_solidar2 + soc_solidar3 + soc_solidar4
+g.coop ~ a*Control + b*Forgive + c*trust
+trust ~ d*Control + e*Forgive
+  con.trust.med := c*d
+  for.trust.med := c*e
+'
+med.fit <- sem(med.mod, ds.trust, meanstructure = T, mimic = "Mplus")
+summary(med.fit, standardized = TRUE, fit.measures = TRUE)
+```
